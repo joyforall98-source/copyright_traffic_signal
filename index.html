@@ -451,6 +451,7 @@ textarea:focus{outline:2px solid var(--ask);outline-offset:-2px;background:var(-
 .flip{background:var(--hold-t);border-radius:var(--r-box);padding:14px 16px;margin-top:18px;font-size:var(--fs-label)}
 .ask{background:var(--hold-t);border-radius:var(--r-box);padding:14px 16px;margin-bottom:16px;font-size:var(--fs-body)}
 .ask .row{margin-top:10px}
+.ask-q{font-weight:700;color:var(--ink);margin-bottom:6px}
 .flip b{font-size:var(--fs-label)}
 .cmp{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:var(--fs-label);
   background:var(--subtle);border-radius:var(--r-box);padding:12px 16px;margin-bottom:16px}
@@ -1317,7 +1318,13 @@ const OPEN=["학부모","부모님","공개 밴드","오픈채팅","오픈 채�
 const GRP_PRIV=/비공개 ?(학급 ?|반 ?)?(밴드|카페|단톡방?|단체방|카톡방)/g;
 const NEG =["말고","없이","제외하고","아니라","빼고","지 않","않고","안 올리","안 하고","비공개"];
 
-const IP  =["디즈니","마블","픽사","포켓몬","산리오","짱구","뽀로로","핑크퐁","캐릭터","애니","만화","웹툰","브랜드","로고"];
+/* 캐릭터 — 이름이 있는 캐릭터(디즈니 등)는 직접 그려도 남의 것입니다.
+   '캐릭터·만화' 같은 일반 낱말은 직접·학생이 만든 것이면 남의 것이 아닙니다(2026-10-06). */
+const IP_BRAND=["디즈니","마블","픽사","포켓몬","산리오","짱구","뽀로로","핑크퐁"];
+const IP_GEN  =["캐릭터","애니","만화","웹툰","브랜드","로고"];
+const MINE=/직접 (만든|그린|찍|촬영|쓴|작곡)|내가 (만든|그린|찍은|쓴)/;
+const isStu=s=>has(s,STU)||/학생들?이 (직접 )?(만든|그린|쓴|작곡)/.test(s);
+const ipHit=s=>has(s,IP_BRAND)||(has(s,IP_GEN)&&!MINE.test(s)&&!isStu(s));
 const FONT=["폰트","글꼴","서체","글씨체"];
 const BOOK=["교과서","문제집","참고서","스캔","교재","지문","기출","시험지","시험 문제"];
 const AIG =["ai로","ai가","에이아이","생성형","미드저니","챗gpt","chatgpt","달리로","ai 이미지","생성 이미지"];
@@ -1351,15 +1358,20 @@ const has=(s,a)=>a.some(k=>s.includes(k));
    문장에서 못 읽어낸 것을 교사가 알고 있는 경우가 많고,
    이 도구는 문장이 아니라 실제 상황을 판정해야 합니다. */
 let scopeChoice="auto";
+/* 공개 범위를 읽어 낸 낱말 — 판정 카드의 '읽어 낸 상황'에 보여 주어 잘못 읽었으면 바로잡게 합니다 */
+let scopeHit="";
+const hit=(s,a)=>a.find(k=>s.includes(k));
 function scope(s){
+  scopeHit="";
   if(scopeChoice!=="auto") return scopeChoice;
   s=s.replace(/(교실|교내|복도) ?게시판/g,"교실");   /* 벽에 붙이는 게시판은 '게시'(공개)가 아닙니다 */
-  if(has(s,GRP)&&has(s,OPEN)) return "out";
-  if(has(s,CLOSED)) return "in";
+  let w;
+  if(has(s,GRP)&&(w=hit(s,OPEN))){ scopeHit=w; return "out"; }
+  if((w=hit(s,CLOSED))){ scopeHit=w; return "in"; }
   if(has(s,GRP)) return "?";
-  if(has(s,DEST)) return "out";
-  if(has(s,INS))  return "in";
-  if(has(s,PLAT)) return "out";
+  if((w=hit(s,DEST))){ scopeHit=w; return "out"; }
+  if((w=hit(s,INS))) { scopeHit=w; return "in"; }
+  if((w=hit(s,PLAT))){ scopeHit=w; return "out"; }
   return "?";
 }
 
@@ -1394,14 +1406,14 @@ function rules(raw){
     d:"주소를 알려 주는 것과 파일을 건네는 것은 무엇이 다를까?"};
 
   /* 캐릭터는 FREE보다 먼저 봅니다. '직접 그린' 디즈니 캐릭터도 캐릭터는 남의 것입니다. */
-  if(has(s,IP)&&sc==="out") return {layer:1,v:"stop",sc,fam:"ip",
+  if(ipHit(s)&&sc==="out") return {layer:1,v:"stop",sc,fam:"ip",
     h:"수업에서 만들었어도 밖에 올리면 다릅니다",
     l:"보호되는 캐릭터를 그려 외부에 공개하는 것은 학교교육 목적 이용의 범위를 벗어납니다. 캐릭터는 저작권과 상표권이 함께 걸린 경우가 많습니다.",
     law:{ref:"25",note:"학교교육 목적 이용은 수업에 필요한 범위를 전제로 합니다."},
     a:["학생이 스스로 디자인한 창작 캐릭터로 대체","공유마당·공공누리 자료 활용","꼭 다뤄야 하면 교실 안 감상까지만"],
     d:"만든 사람도 같고 그린 것도 같은데, 어디에 올리느냐로 판단이 갈린다. 왜일까?"};
 
-  if(has(s,IP)&&sc==="in") return {layer:1,v:"hold",sc,fam:"ip",
+  if(ipHit(s)&&sc==="in") return {layer:1,v:"hold",sc,fam:"ip",
     h:"교실 안에서 끝난다면",
     l:"수업 중 교실에서 보여주고 끝나는 것과, 결과물을 밖으로 내보내는 것은 다르게 다뤄집니다.",
     law:{ref:"25"},
@@ -1410,7 +1422,7 @@ function rules(raw){
 
   /* 학생 창작물 — 캐릭터 규칙 뒤에 둡니다. '학생이 그린 디즈니 캐릭터'는 캐릭터가 남의 것입니다.
      가요·음원·BGM이 섞였으면 음악 규칙으로 넘깁니다. */
-  if(((has(s,MUS)&&s.includes("작곡"))||has(s,STU))&&!has(s,["가요","음원","bgm","배경음악"])) return {layer:1,v:"hold",sc,fam:"stu",
+  if(((has(s,MUS)&&s.includes("작곡"))||isStu(s))&&!has(s,["가요","음원","bgm","배경음악"])) return {layer:1,v:"hold",sc,fam:"stu",
     h:"만든 학생의 동의가 조건입니다",
     l:"학생이 만든 그림·글·곡의 저작자는 그 학생입니다. 학교가 게시하거나 올리려면 학생(보호자)의 동의를 받아야 합니다. 남이 만든 그림·음원을 섞었다면 그 부분은 따로 확인하세요.",
     law:{ref:"2",note:"저작자는 저작물을 창작한 사람입니다. 학생 본인이 자기 작품을 쓰는 것은 이 조건과 관계없습니다."},
@@ -1424,7 +1436,7 @@ function rules(raw){
   /* 직접 만든 자료라도 영화·기사처럼 남의 것이 분명한 소재가 섞이면 자유이용이 아닙니다 — 소재 규칙으로 넘깁니다.
      다만 그 소재가 공유마당·공공누리에서 온 것이면 그대로 자유이용입니다. */
   const otherSrc=has(s,SIG_SRC)&&!has(s,["공유마당","공공누리"]);
-  if(has(s,FREE)&&!has(s,IP)&&(!has(s,MUS)||freeMusic)&&!isEdu(s)&&!otherSrc) return {layer:1,v:"go",sc,fam:"free",
+  if(has(s,FREE)&&!ipHit(s)&&(!has(s,MUS)||freeMusic)&&!isEdu(s)&&!otherSrc) return {layer:1,v:"go",sc,fam:"free",
     h:"이용 조건이 공개된 자료입니다",
     l:"자유이용 창구에서 받았거나 직접 만든 자료입니다. 다만 창구마다 조건이 다르니 표시된 이용조건은 확인하세요.",
     law: s.includes("공공누리")
@@ -1575,13 +1587,13 @@ function signals(raw,r){
   const byScope=(i,o)=>sc==="out"?o:sc==="in"?i:"교실 안 "+i+" · 밖에 공개하면 "+o;
   const freeMusic=has(s,["오디오 보관함","공유마당 음악","공유마당 음원"])&&!has(s,["가요","동요"]);
   const all=[
-    ["ip",   has(s,IP),                                   "보호되는 캐릭터", byScope("조건부","위험")],
+    ["ip",   ipHit(s),                                   "보호되는 캐릭터", byScope("조건부","위험")],
     ["mus",  has(s,MUS)&&!freeMusic&&!s.includes("작곡"), "노래·음원",       byScope("조건부","위험")],
     ["book", has(s,BOOK),                                 "교과서·교재",     has(s,WHOLE)?"통째 복사는 위험":byScope("조건부","위험")],
     ["src",  has(s,SIG_SRC),                              "남이 만든 영화·기사·글", byScope("조건부","위험")],
     ["font", has(s,FONT)&&!s.includes("안심폰트"),        "폰트",            s.includes("파일")&&(has(s,DEST)||has(s,HAND))?"파일을 넘기면 위험":"조건부, 이용 허락 범위 확인"],
     ["photo",has(s,PHOTO),                                "사진 속 인물",    "조건부, 찍힌 사람의 권리는 따로"],
-    ["stu",  has(s,STU),                                  "학생 창작물",     "조건부, 학생(보호자) 동의"],
+    ["stu",  isStu(s),                                    "학생 창작물",     "조건부, 학생(보호자) 동의"],
     ["edu",  isEdu(s),                                    "에듀테크 도구 약관","조건부, 약관의 이용 범위 확인"],
     ["ai",   has(s,AIG),                                  "생성형 AI 산출물","판단 보류, 권리 관계가 정리되는 중"],
     ["grp",  has(s,GRP)&&!has(s,OPEN),                    "학급 밴드·단톡방", "학생과 교사만 있는 비공개 방이어야 수업 공간(저작권 경고 문구·출처 표시, 필요한 일부분만)"]
@@ -1590,6 +1602,65 @@ function signals(raw,r){
   if(hide==="*") return [];
   if(r.fam==="free"&&has(s,["공유마당","공공누리"])) hide=hide.concat("src");   /* 소재 자체가 자유이용 창구에서 온 것 */
   return all.filter(([f,hit])=>hit&&f!==r.fam&&!hide.includes(f)).map(([f,,label,verdict])=>({fam:f,label,verdict}));
+}
+
+/* ══════════════════════════════════════════════════════════════
+   되묻기(2026-10-06 선생님 결정) — 육하원칙 중 판정을 가르는 빈칸만 묻습니다.
+   빈칸마다 값을 넣어 판정해 보고, 값에 따라 판정이 달라질 때만 묻습니다.
+   한 번에 하나, 판정 차이가 큰 칸부터. 결과는 답한 뒤에 보여 줍니다(유리한 답 고르기 방지).
+   '모르겠어요'는 더 조심해야 하는 쪽으로 판정하고 경우별 판정을 함께 적습니다.
+   칸이 셋뿐이라 질문도 많아야 세 번입니다. '왜(목적)' 칸은 조문 대조 뒤에 넣습니다.
+   ══════════════════════════════════════════════════════════════ */
+const PART=/일부|부분|한 ?쪽|몇 ?쪽|한두|한 ?장|장면|짧게/;
+const hasOwner=s=>MINE.test(s)||isStu(s)||has(s,FREE)||has(s,IP_BRAND)||has(s,SIG_SRC)||has(s,BOOK)
+  ||/남이|남의|다른 (사람|선생님|학교)|출판사|방송|가요|음원/.test(s);
+const SLOTS=[
+  {id:"sc", h:"어디까지 보여 주나요?", short:"어디까지",
+   opts:[["in","우리 반(교실)에서만"],["out","인터넷·홈페이지·학부모 등 밖에 공개"]]},
+  {id:"own",h:"누가 만든 자료인가요?", short:"누가 만든",
+   opts:[["mine","내가 직접 만들었어요"],["stu","학생이 만들었어요"],["other","다른 사람이 만들었어요"]],
+   open:s=>!hasOwner(s), aug:{mine:" (직접 만든 것)",stu:" (학생이 만든 것)",other:" (남이 만든 것)"}},
+  {id:"amt",h:"얼마나 쓰나요?", short:"얼마나",
+   opts:[["part","필요한 일부분만"],["whole","통째로(전부)"]],
+   open:s=>has(s,BOOK)&&!has(s,WHOLE)&&!PART.test(s), aug:{part:" (필요한 일부분)",whole:" (통째로)"}}
+];
+const VR={go:0,unk:1,hold:2,stop:3};   /* 더 조심해야 하는 순서 */
+let slotAns={}, slotForce=null;        /* 이 질문에서 고른 답('?' = 모르겠어요) · 다시 묻기로 고른 칸 */
+function evalWith(q,c){
+  const t=q+SLOTS.map(x=>x.aug&&c[x.id]?x.aug[c[x.id]]:"").join("");
+  const keep=scopeChoice; if(c.sc) scopeChoice=c.sc;
+  try{ const r=rules(t); r.qa=t; return r; } finally{ scopeChoice=keep; }
+}
+function judge(q){
+  const lo=q.toLowerCase().replace(/\s+/g," ");
+  const c={}; for(const k in slotAns) if(slotAns[k]!=="?") c[k]=slotAns[k];
+  if(!c.sc&&(scopeChoice==="in"||scopeChoice==="out")) c.sc=scopeChoice;
+  let r=evalWith(q,c);
+  if(r.fam==="neg") return r;
+  const outs=x=>x.opts.map(([v])=>VR[evalWith(q,{...c,[x.id]:v}).v]);
+  const swing=x=>{ const o=outs(x); return new Set(o).size>1 ? Math.max(...o)-Math.min(...o)+.5 : 0; };
+  const isOpen=x=>!(x.id in slotAns) && (x.id==="sc" ? scopeChoice==="auto"&&r.sc==="?" : x.open(lo));
+  const isUnk =x=>slotAns[x.id]==="?" || (x.id==="sc"&&scopeChoice==="?"&&!c.sc);
+  const next=slotForce ? SLOTS.find(x=>x.id===slotForce)
+    : SLOTS.filter(isOpen).map(x=>[x,swing(x)]).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]).map(x=>x[0])[0];
+  const unk=SLOTS.filter(x=>isUnk(x)&&swing(x)>0);
+  if(unk.length){
+    let combos=[c]; for(const x of unk) combos=combos.flatMap(o=>x.opts.map(([v])=>({...o,[x.id]:v})));
+    const worst=combos.map(o=>evalWith(q,o)).reduce((a,b)=>VR[b.v]>VR[a.v]?b:a);
+    worst.range=unk.map(x=>({h:x.short, list:x.opts.map(([v,t])=>[t,evalWith(q,{...c,[x.id]:v}).v])}));
+    if(unk.some(x=>x.id==="sc")) worst.sc="?";
+    r=worst;
+  }
+  if(next) r.ask=next;
+  /* 읽어 낸 상황 — 어디까지는 늘, 나머지는 답한 칸만 */
+  if(scopeChoice==="auto"){ scope(lo.replace(GRP_PRIV,"반 전용 $2")); r.scHit=scopeHit; }
+  r.facts=SLOTS.filter(x=>x.id==="sc"||x.id in slotAns).map(x=>{
+    const a=slotAns[x.id];
+    if(x.id!=="sc"||a) return {id:x.id,h:x.short,v:a==="?"?"모름":x.opts.find(o=>o[0]===a)[1],how:a==="?"?"더 조심해야 하는 쪽으로 봄":"답함"};
+    if(scopeChoice!=="auto") return {id:"sc",h:x.short,v:{in:"교실 안",out:"밖에 공개","?":"모름"}[scopeChoice],how:"직접 고름"};
+    return {id:"sc",h:x.short,v:{in:"교실 안",out:"밖에 공개","?":"알 수 없음"}[r.sc],how:r.scHit?"문장의 ‘"+r.scHit+"’에서 읽음":"문장에 없음"};
+  });
+  return r;
 }
 
 const NAME={go:"통과",hold:"조건부",stop:"위험",unk:"판단 보류"};
@@ -1835,7 +1906,7 @@ function setMode(m){
 }
 
 qEl.addEventListener("input",()=>{errEl.style.display="none"});
-document.getElementById("go").onclick=()=>{ run(true); revealOut(); };
+document.getElementById("go").onclick=()=>{ slotAns={}; slotForce=null; run(true); revealOut(); };
 /* 2026-10-02 선생님 요청: 판정하기를 누르면 판정 구역까지 내려갑니다.
    넓은 화면처럼 판정 구역이 이미 화면 위쪽에 보이면 움직이지 않습니다. 붙어 있는 앱 바 높이만큼 덜 내려갑니다. */
 function revealOut(){
@@ -1874,7 +1945,7 @@ function printSheet(stage,q,nodes,foot){
   window.print();
 }
 document.getElementById("clr").onclick=()=>{
-  qEl.value="";cur=null;guess=null;prev=null;errEl.style.display="none";draw();qEl.focus();
+  qEl.value="";cur=null;guess=null;prev=null;slotAns={};slotForce=null;errEl.style.display="none";draw();qEl.focus();
 };
 /* 공개 범위 선택 버튼 */
 (function(){
@@ -1882,10 +1953,10 @@ document.getElementById("clr").onclick=()=>{
   const TXT={auto:"업로드·게시 같은 표현이 있으면 교실 밖, 수업·감상 표현이 있으면 교실 안으로 간주합니다.",
     in:"교실 안으로 고정했습니다. 문장에 유튜브가 적혀 있어도 교실 안으로 판정합니다.",
     out:"교실 밖으로 고정했습니다. 가정통신문·홈페이지, 학부모가 함께 있는 밴드·단톡방도 교실 밖입니다.",
-    "?":"공개 범위를 모르는 상태로 판정합니다. 범위에 따라 갈리는 사안은 양쪽을 다 안내합니다."};
+    "?":"공개 범위를 모르는 상태로 판정합니다. 범위에 따라 갈리면 양쪽을 다 안내하고, 판정은 더 조심해야 하는 쪽으로 보입니다."};
   box.querySelectorAll("button").forEach(b=>{
     b.onclick=()=>{
-      scopeChoice=b.dataset.s;
+      scopeChoice=b.dataset.s; delete slotAns.sc;   /* 단추로 직접 고르면 되묻기 답보다 우선 */
       box.querySelectorAll("button").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
       note.textContent=TXT[scopeChoice];
       if(qEl.value.trim()) run(true);   /* 이미 판정한 상태면 즉시 다시 판정 */
@@ -1898,7 +1969,8 @@ function run(resetPrev){
   if(!v){errEl.style.display="block";return;}
   errEl.style.display="none";
   if(resetPrev) prev=null; else prev=cur?{v:cur.v,q:cur.q}:null;
-  cur=rules(v); cur.q=v; guess=null; draw();
+  cur=judge(v); cur.q=v; guess=null; draw();
+  if(cur.ask) return;   /* 되묻는 중에는 판정이 확정되지 않았습니다 */
   if(cur.v==="unk") logUnk(v,cur.sc);
   /* 1단계가 판단 보류면 교사에게 다음 길(2단계)을 펼쳐 둡니다. 스크롤은 옮기지 않습니다. */
   if(cur.v==="unk" && mode==="teacher") document.getElementById("aiPanel").open=true;
@@ -2005,6 +2077,20 @@ function draw(){
     lamps(null);
     return;
   }
+  /* 되묻기 — 판정을 가르는 빈칸이 있으면 판정보다 먼저, 판정 이름은 숨기고 묻습니다 */
+  if(cur.ask){
+    const a=cur.ask;
+    document.getElementById("outHead").textContent="하나만 더 알려 주세요";
+    lamps(null);
+    outEl.innerHTML='<div class="ask" id="askSlot"><p class="ask-q">'+esc(cur.q)+'</p>'
+      +'<b>'+esc(a.h)+'</b> 이것에 따라 판정이 달라집니다. 고르면 판정을 보여 드립니다.'
+      +(a.id==="sc"&&has(cur.q.toLowerCase(),GRP)?'<br>학급 밴드·단톡방은 <b>학생과 교사만 있는 비공개 방</b>이면 교실 안, 학부모가 함께 있거나 누구나 들어올 수 있으면 밖에 공개하는 것입니다.':'')
+      +'<div class="row">'+a.opts.map(([v,t])=>'<button class="btn small" data-v="'+v+'">'+esc(t)+'</button>').join("")
+      +'<button class="btn small ghost" data-v="?">잘 모르겠어요</button></div></div>';
+    outEl.querySelectorAll("#askSlot [data-v]").forEach(b=>b.onclick=()=>{
+      slotAns[a.id]=b.dataset.v; slotForce=null; run(true); });
+    return;
+  }
   if(mode==="student"&&guess===null){
     document.getElementById("outHead").textContent="학생의 생각은 어떤가요?";
     lamps(null);
@@ -2022,7 +2108,7 @@ function draw(){
   }
   document.getElementById("outHead").textContent = mode==="student" ? "판정 대조" : "판정";
   const c=cur, k=c.v;
-  const sig=signals(c.q,c);
+  const sig=signals(c.qa||c.q,c);
   lamps(k, mode==="student" ? guess : null);
 
   let cmp="";
@@ -2043,20 +2129,9 @@ function draw(){
       +'</div>';
   }
 
-  /* 되묻기 ① 공개 범위 — 범위를 모르는데 안/밖에 따라 판정이 갈리면 먼저 묻습니다.
-     학생 모드에서는 답을 미리 보여 주지 않도록 판정 이름을 숨깁니다. */
+  /* 소재 되묻기 — 규칙에 걸린 것이 하나도 없을 때만 묻습니다(빈칸 되묻기는 judge()가 판정 전에 합니다). */
   let ask="";
-  if(c.sc==="?"){
-    const vi=rulesAt(c.q,"in").v, vo=rulesAt(c.q,"out").v;
-    if(vi!==vo) ask='<div class="ask" id="askScope"><b>어디까지 내보내시나요?</b> '
-      +'이 질문은 공개 범위에 따라 판정이 달라집니다'
-      +(mode==="student"?'.':' (교실 안: '+NAME[vi]+' / 교실 밖: '+NAME[vo]+').')
-      +(has(c.q.toLowerCase(),GRP)?'<br>학급 밴드·단톡방은 <b>학생과 교사만 있는 비공개 방</b>이면 교실 안, 학부모가 함께 있거나 누구나 들어올 수 있으면 밖에 공개하는 것입니다.':'')
-      +'<div class="row"><button class="btn small" data-s="in">교실 안에서만 씁니다</button>'
-      +'<button class="btn small" data-s="out">밖에 공개합니다</button></div></div>';
-  }
-  /* 되묻기 ② 소재 — 규칙에 걸린 것이 하나도 없을 때만 묻습니다. */
-  if(c.layer===3&&k==="unk"&&!ask) ask='<div class="ask" id="askSrc"><b>무엇이 들어 있나요?</b> '
+  if(c.layer===3&&k==="unk") ask='<div class="ask" id="askSrc"><b>무엇이 들어 있나요?</b> '
     +'고르시면 그 내용을 덧붙여 다시 판정합니다.<div class="row">'
     +ASK_SRC.map(([t],i)=>'<button class="btn small ghost" data-i="'+i+'">'+t+'</button>').join("")+'</div></div>';
 
@@ -2082,6 +2157,13 @@ function draw(){
       +'<div class="vh"><h2>'+c.h+'</h2></div>'
       +(acts.length?'<div class="act act-'+k+'"><span class="act-h">'+ACT_HEAD[k]+'</span><b>'+alt(acts[0])+'</b></div>':'')
       +'<p class="why">'+c.l+'</p>'
+      /* 읽어 낸 상황 — 도구가 무엇을 가정했는지 보여 주고, 눌러서 다시 고르게 합니다 */
+      +(c.facts&&c.facts.length?'<div class="sec sm"><div class="sec-h">읽어 낸 상황</div><div class="chips">'
+        +c.facts.map(x=>'<button class="chip" data-reask="'+x.id+'">'+esc(x.h)+': <b>'+esc(x.v)+'</b> · '+esc(x.how)+'</button>').join("")
+        +'</div><div class="mini">잘못 읽었으면 눌러서 다시 고르세요.</div></div>':'')
+      +(c.range?'<div class="sec sm"><div class="sec-h">모르는 조건</div><ul class="alts">'
+        +c.range.map(x=>'<li><b>'+esc(x.h)+'</b>: '+x.list.map(([t,v])=>esc(t)+' → '+NAME[v]).join(" · ")+'</li>').join("")
+        +'</ul><div class="mini">모르는 조건은 더 조심해야 하는 쪽으로 판정했습니다.</div></div>':'')
       +'<div class="sec sm"><div class="sec-h">근거</div><div class="law">'+lawLine(c.law)+'</div></div>'
       +(sig.length?'<div class="sec sm"><div class="sec-h">함께 확인할 조건</div><ul class="alts">'
         +sig.map(x=>'<li><b>'+esc(x.label)+'</b>: '+esc(x.verdict)+'</li>').join("")
@@ -2107,20 +2189,19 @@ function draw(){
   outEl.querySelectorAll("[data-goai]").forEach(b=>b.onclick=()=>{
     document.getElementById("aq").value=c.q; showTab("ai",true);
   });
-  outEl.querySelectorAll("#askScope [data-s]").forEach(b=>b.onclick=()=>
-    document.querySelector('#scopes button[data-s="'+b.dataset.s+'"]').click());
+  outEl.querySelectorAll("[data-reask]").forEach(b=>b.onclick=()=>{
+    slotForce=b.dataset.reask; delete slotAns[slotForce]; run(true); revealOut(); });
   outEl.querySelectorAll("#askSrc [data-i]").forEach(b=>b.onclick=()=>{
     qEl.value=c.q+" "+ASK_SRC[+b.dataset.i][1]; run(true);
   });
   if(f){
     document.getElementById("flipBtn").onclick=()=>{
-      qEl.value=f.text; run(false);
+      qEl.value=f.text; delete slotAns.sc; run(false);
       outEl.scrollIntoView({behavior:"smooth",block:"start"});
     };
   }
 }
 function esc(t){const d=document.createElement("div");d.textContent=t;return d.innerHTML;}
-function rulesAt(q,sc){ const keep=scopeChoice; scopeChoice=sc; try{ return rules(q); } finally{ scopeChoice=keep; } }
 /* 덧붙이는 문구에는 규칙이 읽는 소재 단어가 들어 있어야 합니다(이미지·음악·남의 글·영상). */
 const ASK_SRC=[["사진·그림","(남이 만든 사진·이미지가 들어 있음)"],["음악","(음악이 들어 있음)"],
   ["글","(책·인터넷의 남의 글이 들어 있음)"],["영상","(영상이 들어 있음)"]];
@@ -2182,7 +2263,7 @@ EX.forEach(t=>{
   const b=document.createElement("button");
   /* 문장을 자르지 않습니다. 잘린 예시는 무엇을 누르는지 끝까지 보이지 않습니다. */
   b.className="chip"; b.textContent=t;
-  b.onclick=()=>{qEl.value=t;errEl.style.display="none";run(true);revealOut();};
+  b.onclick=()=>{qEl.value=t;slotAns={};slotForce=null;errEl.style.display="none";run(true);revealOut();};
   chips.appendChild(b);
 });
 

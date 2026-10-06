@@ -22,5 +22,19 @@ for(const c of cases){
     if(g!==e){ sigBad++; bad.push(`${String(c.id).padStart(2)} [조건 불일치] 기대 [${e}] → [${g}] | ${c.q}`); }
   }
 }
-console.log(tally, sigBad?{"조건 불일치":sigBad}:""); bad.forEach(l=>console.log(l));
-process.exit(tally["관대 오판"]+tally["과잉 판정"]+sigBad>0?1:0);
+/* 되묻기(judge) — 판정을 가르는 칸만, 차례대로, 모르면 더 조심해야 하는 쪽 */
+vm.runInContext("this.judge=judge;this.setAns=(a,s)=>{slotAns=a;slotForce=null;scopeChoice=s||'auto';};",ctx);
+const B="교과서 사진을 학급 밴드에 올려도 되나요?";
+const J=[
+  [B,{},"auto","hold","sc"], [B,{sc:"in"},"auto","hold","amt"], [B,{sc:"in",amt:"whole"},"auto","stop",null],
+  [B,{sc:"?"},"auto","stop","amt"], [B,{},"?","stop","amt"],
+  ["캐릭터 그림을 홈페이지에 올려도 되나요?",{},"auto","stop","own"],
+  ["캐릭터 그림을 홈페이지에 올려도 되나요?",{own:"mine"},"auto","go",null],
+  ["디즈니 캐릭터를 수업시간에 그려서 유튜브에 올려도 되나요?",{},"auto","stop",null],
+];
+let jBad=0;
+for(const [q,a,s,v,ask] of J){ ctx.setAns(a,s); const r=ctx.judge(q);
+  if(r.v!==v||(r.ask?.id??null)!==ask){ jBad++; bad.push(`[되묻기] ${JSON.stringify(a)} ${s} 기대 ${v}/${ask} → ${r.v}/${r.ask?.id??null} | ${q}`); } }
+ctx.setAns({},"auto");
+console.log(tally, sigBad?{"조건 불일치":sigBad}:"", {"되묻기":`${J.length-jBad}/${J.length}`}); bad.forEach(l=>console.log(l));
+process.exit(tally["관대 오판"]+tally["과잉 판정"]+sigBad+jBad>0?1:0);
